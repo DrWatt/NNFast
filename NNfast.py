@@ -27,17 +27,21 @@ from qkeras.utils import load_qmodel
 from qkeras.qlayers import QDense, QActivation
 from qkeras.quantizers import quantized_bits, quantized_relu,smooth_sigmoid,quantized_tanh
 
-from sklearn.preprocessing import LabelEncoder,OneHotEncoder
+from sklearn.preprocessing import LabelEncoder,MinMaxScaler
 
 
-os.environ["CUDA_VISIBLE_DEVICES"]="-1"  
+#os.environ["CUDA_VISIBLE_DEVICES"]="-1"  
 
 
 seed = 1563
 np.random.seed(seed)
 encoder = LabelEncoder()
-Nfolder = check_output("n=0; while [ -d \"out_${n}\" ]; do n=$(($n+1)); done; mkdir \"out_${n}\"; echo $n",shell=True)
-fold = "out_"+str(Nfolder)[2]
+scale =MinMaxScaler()
+curdir = os.getcwd()
+print(curdir)
+Nfolder = check_output("n=0; while [ -d \""+curdir+"/out_${n}\" ]; do n=$(($n+1)); done; mkdir \""+curdir+"/out_${n}\"; echo $n",shell=True)
+print(Nfolder)
+fold = curdir+"/out_"+str(int(Nfolder))
 
 
 def baseline_model(indim=7,hidden_nodes=[8,8],outdim=1,Quant=False,multiclass=False):
@@ -76,13 +80,13 @@ def baseline_model(indim=7,hidden_nodes=[8,8],outdim=1,Quant=False,multiclass=Fa
         for a in hidden_nodes[1:]:
             model.add(tf.keras.layers.Dense(a,activation='relu'))
     
-        model.add(tf.keras.layers.Dense(outdim, activation='softmax'))
+        model.add(tf.keras.layers.Dense(outdim, activation='relu'))
     
     # Compile model.
     if multiclass:
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
     else:
-        model.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])
+        model.compile(loss='mean_squared_error', optimizer='adam')
     return model
 
 
@@ -136,7 +140,7 @@ def model_upload(modpath,Quant=False):
         raise
     return estimator
 
-def data_upload(datapath):
+def data_upload(datapath,name="dataset"):
     '''
     Function to load data from disk or using an URL.
 
@@ -161,13 +165,13 @@ def data_upload(datapath):
             print("Error: Could not download file")
             raise        
         # Writing dataset on disk.    
-        with open(fold+"/dataset.csv","wb") as o:
+        with open(fold+"/" + name + ".csv","wb") as o:
             o.write(dataset.content)
-        datapath = fold+"/dataset.csv"
+        datapath = fold+"/" + name + ".csv"
     print("Loading Dataset from Disk")
     
     # Reading dataset and creating pandas.DataFrame.
-    dataset = pd.read_csv(datapath,header=0)
+    dataset = pd.read_csv(datapath,header=0,index_col=0)
     print("Entries ", len(dataset))        
     
     return dataset
@@ -290,14 +294,15 @@ def plotting_NN(estimator,history):
     #plot_model(estimator.model, to_file='model.png',show_shapes=True)
     
     # Accuracy and Loss function plots saved in png format.
-    plt.plot(history.history['accuracy'])
-    plt.plot(history.history['val_accuracy'])
-    plt.title('Model accuracy')
-    plt.ylabel('Accuracy')      
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Test'], loc='upper left')
-    plt.savefig(fold+"/Keras_NN_Accuracy.png")
-    plt.clf()
+    if 'accuracy' in history.history:
+        plt.plot(history.history['accuracy'])
+        plt.plot(history.history['val_accuracy'])
+        plt.title('Model accuracy')
+        plt.ylabel('Accuracy')      
+        plt.xlabel('Epoch')
+        plt.legend(['Train', 'Test'], loc='upper left')
+        plt.savefig(fold+"/Keras_NN_Accuracy.png")
+        plt.clf()
     
     plt.plot(history.history['loss'])
     plt.plot(history.history['val_loss'])
@@ -391,17 +396,18 @@ def training_model(datapath,targetname, NSample=0, par = [2,30,0.3],plotting=Fal
     else:
         dataset = data_upload(datapath)
         try:
-            truelabel = dataset[targetname].to_numpy()
+            truelabel = dataset[targetname].to_numpy().reshape(dataset.shape[0],1)
         except KeyError:
             print("Error: target not provided or not found in dataset")
             raise
+        truelabel=scale.fit_transform(truelabel)
         dataset = dataset.drop(columns=[targetname]).to_numpy()
     
     # Model constructor
-    estimator = baseline_model(indim=dataset.shape[1],outdim=outdim,Quant=Quant)
+    estimator = baseline_model(indim=dataset.shape[1],outdim=outdim,Quant=Quant,multiclass=multiclassification)
     
     # Training method for our model. 
-    history = estimator.fit(dataset, truelabel, epochs=par[0], batch_size=par[1],verbose=2,validation_split=par[2])
+    history = estimator.fit(dataset, truelabel, epochs=par[0], batch_size=par[1],verbose=1,validation_split=par[2])
 
     # Saving trained model on disk. (Only default namefile ATM)
     estimator.save(fold+"/KerasNN2_Model.h5")
@@ -409,7 +415,7 @@ def training_model(datapath,targetname, NSample=0, par = [2,30,0.3],plotting=Fal
     if plotting:
         plotting_NN(estimator, history)
     # Returning values assumed by evaluation metrics through the epochs.
-    return pd.DataFrame.from_dict(history.history)
+    return pd.DataFrame.from_dict(history.history),dataset,truelabel
 
 
 
@@ -464,14 +470,14 @@ def run(argss):
             
             if (argss.Qnn): 
                 print("Training a Quantized NN")
-                model = training_model(argss.data,"bxout",
+                model = training_model(argss.data,"genParticle.pt",
                             par=pr,
-                            plotting=True,multiclassification=argss.multiclass,Quant=True)
+                            plotting=True,multiclassification=argss.C,Quant=True)
             # Construction and training of Keras NN.
             else:
-                model = training_model(argss.data,"bxout",
+                model = training_model(argss.data,"genParticle.pt",
                                 par=pr,
-                                plotting=True,multiclassification=argss.multiclass)
+                                plotting=True,multiclassification=argss.C)
             
             # results = 1- nn_performance(model,"datatree.csv")
             # print("Neural Network's accuracy: ", results)
@@ -502,7 +508,7 @@ if __name__ == '__main__':
     parser.add_argument('--data',type=str,help="Url or path of dataset in csv format.")
     parser.add_argument('--nn', action='store_true', help='If flagged activate keras nn model')
     parser.add_argument('--Qnn', action='store_true', help='If flagged activate Qkeras nn model')
-    parser.add_argument('--multiclass', action='store_true', help='If flagged build a NN for classification with more than 2 classes')
+    parser.add_argument('-C', action='store_true', help='If flagged build a NN for classification')
     #parser.add_argument('--hls', action='store_true', help='If flagged activate parsing of keras model to HDL')
     #parser.add_argument('--nnlayout', type=dict, help="Layout for the Keras NN") :'(
     # parser.add_argument('--modeltraining', help="Choice of ML model between NN, xgboost BDT or KNN")
@@ -517,6 +523,6 @@ if __name__ == '__main__':
 
 
     run(pars)
-    print("Files saved in /"+ fold)
+    print("Files saved in "+ fold)
     print("Executed in %s s" % (time.time() - time0))
     
