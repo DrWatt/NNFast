@@ -10,6 +10,7 @@ import time
 import argparse
 import json
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 import requests
 from joblib import load, dump
 
@@ -28,7 +29,7 @@ from qkeras.qlayers import QDense, QActivation
 from qkeras.quantizers import quantized_bits, quantized_relu,smooth_sigmoid,quantized_tanh
 
 from sklearn.preprocessing import LabelEncoder,MinMaxScaler
-
+from pickle import dump,load
 
 #os.environ["CUDA_VISIBLE_DEVICES"]="-1"  
 
@@ -42,7 +43,7 @@ Nfolder = check_output("n=0; while [ -d \""+curdir+"/out_${n}\" ]; do n=$(($n+1)
 fold = curdir+"/out_"+str(int(Nfolder))
 
 
-def baseline_model(indim=7,hidden_nodes=[8,8],outdim=1,Quant=False,multiclass=False):
+def baseline_model(indim=7,hidden_nodes=[8,8],jsonpath=None,outdim=1,Quant=False,multiclass=False):
     '''
     Model constructor definition, as needed to use scikit-learn wrapper with keras.    
     
@@ -64,8 +65,11 @@ def baseline_model(indim=7,hidden_nodes=[8,8],outdim=1,Quant=False,multiclass=Fa
     model = tf.keras.Sequential()
     
     #Nodes of the NN.
-    layoutdict = json.load(open("lay.json"))
-    print(layoutdict)
+    try:
+        layoutdict = json.load(open(jsonpath))
+    except Exception:
+        print("Json file with NN layout not found or not provided, using default lay.json")
+        layoutdict = json.load(open("lay.json"))
     if Quant:
         model.add(QDense(hidden_nodes[0],  input_shape=(indim,),kernel_quantizer=quantized_bits(16,1),bias_quantizer=quantized_bits(16,1), kernel_initializer='random_normal'))
         model.add(QActivation(activation=quantized_relu(16,1), name='relu1'))
@@ -178,7 +182,7 @@ def data_upload(datapath,name="dataset"):
     print("Loading Dataset from Disk")
     
     # Reading dataset and creating pandas.DataFrame.
-    dataset = pd.read_csv(datapath,header=0,index_col=0)
+    dataset = pd.read_csv(datapath,header=0)
     print("Entries ", len(dataset))        
     
     return dataset
@@ -244,10 +248,11 @@ def predictor(datapath,modelpath,performance=False,NSamples=0,resultlabel=False,
     # Loading dataset and preprocessing it.
 
     dataset = data_upload(datapath)
-
     # Loading NN.
     estimator = model_upload(modelpath,Quant)
-
+    if resultlabel==-1 or resultlabel==False: 
+            resultlabel=dataset.columns[-1]
+            print("Target value not specified: using last column")
     # Failed loading handling.
     # if estimator == 404:
     #     return 404
@@ -255,9 +260,11 @@ def predictor(datapath,modelpath,performance=False,NSamples=0,resultlabel=False,
         print("Check loaded model compatibility.")
         raise TypeError(estimator)
     
+    if resultlabel in dataset.columns: dataset = dataset.drop(columns=[resultlabel])
     # Handling of number of entries argument (NSample).
     if NSamples == 0:
         X = dataset
+        
     elif NSamples > dataset.size:
         print("Sample requested is greater than dataset provided: using whole dataset")
         X = dataset
@@ -266,7 +273,7 @@ def predictor(datapath,modelpath,performance=False,NSamples=0,resultlabel=False,
     print("Thinking about the results")
     # Actual prediction method + inverse encoding to get actual BX values.
     pred=estimator.predict(X)
- 
+
     # condition to return also labels.
     if performance:
         try:
@@ -336,7 +343,7 @@ def data_encoder(datapath,targetlabel,NSample=None):
         List made up of two Dataframes: the first contains the preprocessed data and the second one contains the one hot encoded labels.
 
     '''
-    
+    print("encoding\\\\\\\\\\\/")
     # Uploading preprocessed dataset.
     dataset = data_upload(datapath)
 
@@ -360,8 +367,8 @@ def data_encoder(datapath,targetlabel,NSample=None):
     # Encoding BXs to have labels from 0 to 9.
     #encoder = LabelEncoder()
     encoder.fit(target)
+    dump(encoder,open("encoder.pkl","wb"))
     encoded_target = encoder.transform(target)
-    print(encoded_target)
     transformed_target = tf.keras.utils.to_categorical(encoded_target)
 
     return [X,transformed_target]  
@@ -422,11 +429,10 @@ def training_model(datapath,targetname, NSample=0, par = [2,30,0.3],plotting=Fal
 
     # Saving trained model on disk. (Only default namefile ATM)
     estimator.save(fold+"/KerasNN2_Model.h5")
-    print(type(estimator))
     if plotting:
         plotting_NN(estimator, history)
     # Returning values assumed by evaluation metrics through the epochs.
-    return pd.DataFrame.from_dict(history.history),dataset,truelabel
+    return pd.DataFrame.from_dict(history.history)
 
 
 
@@ -463,8 +469,8 @@ def run(argss):
                 print("Inference using a Quantized NN")
                 pred = predictor(argss.data,argss.modelupload,Quant=True)
             else:
-                pred = predictor(argss.data,argss.modelupload)
-            pred.astype(int).tofile(fold+"/kerasres.csv",sep='\n',format='%1i')
+                pred = predictor(argss.data,argss.modelupload,resultlabel=argss.targetvar)
+            pred.astype(float).tofile(fold+"/kerasres.csv",sep='\n',format='%f')
             print("Predictions saved in .csv format")
         else:
             # try:
@@ -514,26 +520,27 @@ def run(argss):
 
 if __name__ == '__main__':
     time0 = time.time()
-    
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
+    tf.autograph.set_verbosity(1)
     parser=argparse.ArgumentParser()
     parser.add_argument('--data',type=str,help="Url or path of dataset in csv format.")
     parser.add_argument('--nn', action='store_true', help='If flagged activate keras nn model')
     parser.add_argument('--Qnn', action='store_true', help='If flagged activate Qkeras nn model')
     parser.add_argument('-C', action='store_true', help='If flagged build a NN for classification')
     #parser.add_argument('--hls', action='store_true', help='If flagged activate parsing of keras model to HDL')
-    #parser.add_argument('--nnlayout', type=dict, help="Layout for the Keras NN") :'(
+    parser.add_argument('--nnlayout', type=str, help="Layout for the Keras NN in JSON format")
     parser.add_argument("--targetvar",type=str,help="Target value for training or inference")
     parser.add_argument('--nnparams',nargs='+', help="Hyperparameters for Keras NN")
     #parser.add_argument('-p', action='store_true', help='If flagged set predecting mode using a previously trained model')
     parser.add_argument('--modelupload',type=str,help="Url or path of model in joblib format")
-    
+    parser.add_argument('--nogpu',action='store_true',help="Deactivate training on GPU")
     #parser.set_defaults
     #print(parser.parse_args())
     pars = parser.parse_args()
     #xgparams = json.load(open(pars.xgparams)) if pars.xgparams[0][0] == '/' else json.load(open(os.path.dirname(os.path.realpath(__file__))+'/'+pars.xgparams))
 
-
-    #run(pars)
+    if pars.nogpu: os.environ["CUDA_VISIBLE_DEVICES"]="-1"  
+    run(pars)
     print("Files saved in "+ fold)
     print("Executed in %s s" % (time.time() - time0))
     
