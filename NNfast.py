@@ -38,9 +38,7 @@ np.random.seed(seed)
 encoder = LabelEncoder()
 scale =MinMaxScaler()
 curdir = os.getcwd()
-print(curdir)
 Nfolder = check_output("n=0; while [ -d \""+curdir+"/out_${n}\" ]; do n=$(($n+1)); done; mkdir \""+curdir+"/out_${n}\"; echo $n",shell=True)
-print(Nfolder)
 fold = curdir+"/out_"+str(int(Nfolder))
 
 
@@ -66,7 +64,8 @@ def baseline_model(indim=7,hidden_nodes=[8,8],outdim=1,Quant=False,multiclass=Fa
     model = tf.keras.Sequential()
     
     #Nodes of the NN.
-
+    layoutdict = json.load(open("lay.json"))
+    print(layoutdict)
     if Quant:
         model.add(QDense(hidden_nodes[0],  input_shape=(indim,),kernel_quantizer=quantized_bits(16,1),bias_quantizer=quantized_bits(16,1), kernel_initializer='random_normal'))
         model.add(QActivation(activation=quantized_relu(16,1), name='relu1'))
@@ -76,12 +75,20 @@ def baseline_model(indim=7,hidden_nodes=[8,8],outdim=1,Quant=False,multiclass=Fa
         model.add(QDense(outdim, kernel_quantizer=quantized_bits(16,1),bias_quantizer=quantized_bits(16,1)))
         model.add(QActivation(activation=quantized_relu(16,1), name='relufin'))
     else:
-        model.add(tf.keras.layers.Dense(hidden_nodes[0], input_dim=indim, activation='relu'))    
-        for a in hidden_nodes[1:]:
-            model.add(tf.keras.layers.Dense(a,activation='relu'))
+        model.add(eval("tf.keras.layers."+layoutdict["Input"]["type"])(units=layoutdict["Input"]["nodes"],input_dim=indim,activation=layoutdict["Input"]["activation"]))
+        #model.add(tf.keras.layers.Dense(hidden_nodes[0], input_dim=indim, activation='relu'))    
+        hidden = layoutdict["Hidden Layers"]
+        
+        for lays in hidden:
+            
+            model.add(eval("tf.keras.layers."+lays['type'])(units = lays["nodes"],activation=lays["activation"]))
     
-        model.add(tf.keras.layers.Dense(outdim, activation='relu'))
+        
+        # for a in hidden_nodes[1:]:
+        #     model.add(tf.keras.layers.Dense(a,activation='relu'))
     
+        model.add(eval("tf.keras.layers."+layoutdict["Output"]["type"])(outdim, activation=layoutdict["Output"]["activation"]))
+        #model.add(tf.keras.layers.Dense(outdim, activation='relu'))
     # Compile model.
     if multiclass:
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
@@ -334,8 +341,9 @@ def data_encoder(datapath,targetlabel,NSample=None):
     dataset = data_upload(datapath)
 
     
-    
-    
+    if targetlabel==-1: 
+        targetlabel=dataset.columns[-1]
+        print("Target value not specified: using last column")
 
     # Handling of number of entries argument (NSample).
     if NSample == None or NSample == 0:
@@ -395,6 +403,9 @@ def training_model(datapath,targetname, NSample=0, par = [2,30,0.3],plotting=Fal
 
     else:
         dataset = data_upload(datapath)
+        if targetname==-1: 
+            targetname=dataset.columns[-1]
+            print("Target value not specified: using last column")
         try:
             truelabel = dataset[targetname].to_numpy().reshape(dataset.shape[0],1)
         except KeyError:
@@ -441,7 +452,7 @@ def run(argss):
     #     os.system("rm -r " + fold)
     #     raise Exception("Choose a model using the --xgb and/or --nn flags or use the --hls flag to activate hls4ml functionality.")
     #     #print("Choose a model using the --xgb and/or --nn flags")
-    
+    if argss.targetvar==None: argss.targetvar=-1
     if argss.data==None: argss.data = "https://raw.githubusercontent.com/DrWatt/softcomp/master/datatree.csv"
     # Routine followed when --nn is True
     if argss.nn:
@@ -470,12 +481,12 @@ def run(argss):
             
             if (argss.Qnn): 
                 print("Training a Quantized NN")
-                model = training_model(argss.data,"genParticle.pt",
+                model = training_model(argss.data,argss.targetvar,
                             par=pr,
                             plotting=True,multiclassification=argss.C,Quant=True)
             # Construction and training of Keras NN.
             else:
-                model = training_model(argss.data,"genParticle.pt",
+                model = training_model(argss.data,argss.targetvar,
                                 par=pr,
                                 plotting=True,multiclassification=argss.C)
             
@@ -511,7 +522,7 @@ if __name__ == '__main__':
     parser.add_argument('-C', action='store_true', help='If flagged build a NN for classification')
     #parser.add_argument('--hls', action='store_true', help='If flagged activate parsing of keras model to HDL')
     #parser.add_argument('--nnlayout', type=dict, help="Layout for the Keras NN") :'(
-    # parser.add_argument('--modeltraining', help="Choice of ML model between NN, xgboost BDT or KNN")
+    parser.add_argument("--targetvar",type=str,help="Target value for training or inference")
     parser.add_argument('--nnparams',nargs='+', help="Hyperparameters for Keras NN")
     #parser.add_argument('-p', action='store_true', help='If flagged set predecting mode using a previously trained model')
     parser.add_argument('--modelupload',type=str,help="Url or path of model in joblib format")
@@ -522,7 +533,7 @@ if __name__ == '__main__':
     #xgparams = json.load(open(pars.xgparams)) if pars.xgparams[0][0] == '/' else json.load(open(os.path.dirname(os.path.realpath(__file__))+'/'+pars.xgparams))
 
 
-    run(pars)
+    #run(pars)
     print("Files saved in "+ fold)
     print("Executed in %s s" % (time.time() - time0))
     
