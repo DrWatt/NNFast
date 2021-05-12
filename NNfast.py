@@ -31,13 +31,12 @@ from qkeras.quantizers import quantized_bits, quantized_relu,smooth_sigmoid,quan
 from sklearn.preprocessing import LabelEncoder,MinMaxScaler
 from pickle import dump,load
 
-#os.environ["CUDA_VISIBLE_DEVICES"]="-1"  
 
 
 seed = 1563
 np.random.seed(seed)
 encoder = LabelEncoder()
-scale =MinMaxScaler()
+scale = MinMaxScaler()
 curdir = os.getcwd()
 Nfolder = check_output("n=0; while [ -d \""+curdir+"/out_${n}\" ]; do n=$(($n+1)); done; mkdir \""+curdir+"/out_${n}\"; echo $n",shell=True)
 fold = curdir+"/out_"+str(int(Nfolder))
@@ -45,23 +44,30 @@ fold = curdir+"/out_"+str(int(Nfolder))
 
 def baseline_model(indim=7,hidden_nodes=[8,8],jsonpath=None,outdim=1,Quant=False,multiclass=False):
     '''
-    Model constructor definition, as needed to use scikit-learn wrapper with keras.    
     
+
     Parameters
     ----------
     indim : int, optional
-        Number of features of dataset and dimension of input layer. The default is 7.
+        Number of features of dataset and dimension of input layer. The default is 7.. The default is 7.
     hidden_nodes : list, optional
-        List of number of nodes per layer. The default is [8,8].
-    outdim : int, optional
-        Number of classes and dimension of output layer. The default is 9.
+        List of number of nodes per layer. The default is [8,8]. (Kept for QKeras compatibility)
+    jsonpath : str, optional
+        Path to JSON describing the nn layout. The default is None.
+    outdim : TYPE, optional
+        umber of classes and dimension of output layer. The default is 1.
+    Quant : bool, optional
+        Flag to build a QKeras NN. The default is False.
+    multiclass : bool, optional
+        Flag for switching between regression and classification. The default is False.
 
     Returns
     -------
-    model : keras.engine.sequential.Sequential
-        Sequntial NN object to be used inside KerasClassifer method.
+    model : tensorflow.python.keras.engine.sequential.Sequential
+        Sequntial NN object.
 
     '''
+    
     model = tf.keras.Sequential()
     
     #Nodes of the NN.
@@ -87,12 +93,8 @@ def baseline_model(indim=7,hidden_nodes=[8,8],jsonpath=None,outdim=1,Quant=False
             
             model.add(eval("tf.keras.layers."+lays['type'])(units = lays["nodes"],activation=lays["activation"]))
     
-        
-        # for a in hidden_nodes[1:]:
-        #     model.add(tf.keras.layers.Dense(a,activation='relu'))
-    
         model.add(eval("tf.keras.layers."+layoutdict["Output"]["type"])(outdim, activation=layoutdict["Output"]["activation"]))
-        #model.add(tf.keras.layers.Dense(outdim, activation='relu'))
+
     # Compile model.
     if multiclass:
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
@@ -108,15 +110,14 @@ def model_upload(modpath,Quant=False):
     Parameters
     ----------
     modpath : String
-        path (local or URL) of model in joblib format..
+        path (local or URL) of model in joblib format.
+    Quant : bool, optional
+        Flag to build a QKeras NN. The default is False.
 
     Returns
     -------
-    keras.wrappers.scikit_learn.KerasClassifier 
-        Wrapper from the Scikit.learn library of a the Keras Classifier.
-    or
-    xgboost.core.Booster
-        Booster is the model of xgboost, that contains low level routines for training, prediction and evaluation.
+    model : tensorflow.python.keras.engine.sequential.Sequential
+        Sequntial NN object.
 
     '''
     if("http" in modpath):
@@ -157,8 +158,10 @@ def data_upload(datapath,name="dataset"):
 
     Parameters
     ----------
-    datapath : String
+    datapath : str
         path (local or URL) of data in csv format.
+    name : str
+        filename of downloaded dataset. The default is "dataset".
 
     Returns
     -------
@@ -187,22 +190,22 @@ def data_upload(datapath,name="dataset"):
     
     return dataset
 
-def correlation_matrix(data):
+def correlation_matrix(datapath):
     '''
     Quick correlation matrix printer
 
     Parameters
     ----------
-    data : pandas.dataframe
-        Dataframe containing data.
+    datapath : str
+        path (local or URL) of data in csv format.
 
     Returns
     -------
-    pandas.dataframe
-        Dataframe rescaled using min-max normalization.
+    figure.Figure
+        
 
     '''
-    
+    data = data_upload(datapath)
 
     f = plt.figure(figsize=(19, 15))
     plt.matshow(data.corr(), fignum=f.number)
@@ -227,14 +230,18 @@ def predictor(datapath,modelpath,performance=False,NSamples=0,resultlabel=False,
 
     Parameters
     ----------
-    datapath : String
+    datapath : str
         path (local or URL) of data in csv format..
-    modelpath : String
+    modelpath : str
         path (local or URL) of model in joblib format..
-    performance : Boolean, optional
+    performance : bool, optional
         Set between two return mode: False -> return only predictions; True -> return predictions and true labels if provided (for evaluating performance). The default is False.
     NSamples : int, optional
         number of entries used of the dataset. If NSamples == 0 or NSamples > data size the all dataset will be used. The default is 0.
+    resultlabel : str, optional
+        Name of the variable to be predicted. The default is False.
+    Quant : bool, optional
+        Flag to build a QKeras NN. The default is False.
 
     Returns
     -------
@@ -295,7 +302,7 @@ def plotting_NN(estimator,history):
 
     Parameters
     ----------
-    estimator : keras.wrappers.scikit_learn.KerasClassifier
+    estimator : tensorflow.python.keras.engine.sequential.Sequential
         Object containing NN model.
     history : keras.callbacks.History
         Return of fit function of the NN model.
@@ -334,6 +341,8 @@ def data_encoder(datapath,targetlabel,NSample=None):
     ----------
     datapath : String
         path (local or URL) of data in csv format.
+    targetlabel : str, optional
+        Name of the variable to be predicted by the NN.
     NSample : int, optional
         number of entries used of the dataset. If NSamples == None or NSamples > data size the all dataset will be used.. The default is None.
 
@@ -387,7 +396,13 @@ def training_model(datapath,targetname, NSample=0, par = [2,30,0.3],plotting=Fal
         number of entries used of the dataset. If NSamples == 0 or NSamples > data size the all dataset will be used.. The default is 0.
     par : List of int,int,float, optional
         list of paramaters passed to the NN costructor [number of epochs the NN will be trained for, size of the batches used to update the weights, fraction of the input dataset used for validation]. The default is [48,30,0.3].
-
+    plotting : bool, optional
+        Flag to print relevant plots about the training process. The default is False.
+    multiclass : bool, optional
+        Flag for switching between regression and classification. The default is False.
+    Quant : bool, optional
+        Flag to build a QKeras NN. The default is False.
+        
     Returns
     -------
     pandas.DataFrame
@@ -540,7 +555,7 @@ if __name__ == '__main__':
     #xgparams = json.load(open(pars.xgparams)) if pars.xgparams[0][0] == '/' else json.load(open(os.path.dirname(os.path.realpath(__file__))+'/'+pars.xgparams))
 
     if pars.nogpu: os.environ["CUDA_VISIBLE_DEVICES"]="-1"  
-    run(pars)
+    #run(pars)
     print("Files saved in "+ fold)
     print("Executed in %s s" % (time.time() - time0))
     
