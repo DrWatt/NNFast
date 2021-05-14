@@ -27,6 +27,15 @@ fi
 
 $python -m pip --version > /dev/null 2>&1
 
+tar --version > /dev/null 2>&1
+if [[ !($? -eq 0) ]]; then
+	sudo apt install tar gunzip
+fi
+wget --version > /dev/null 2>&1
+if [[ !($? -eq 0) ]]; then
+	sudo apt install tar gunzip
+fi
+
 if [[ !($? -eq 0) ]]; then
 	if [[ !(-e get-pip.py) ]]; then
 	wget https://bootstrap.pypa.io/get-pip.py
