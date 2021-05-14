@@ -26,16 +26,6 @@ if [ -e /usr/bin/python ]; then
 fi
 
 $python -m pip --version > /dev/null 2>&1
-
-tar --version > /dev/null 2>&1
-if [[ !($? -eq 0) ]]; then
-	sudo apt install tar gunzip
-fi
-wget --version > /dev/null 2>&1
-if [[ !($? -eq 0) ]]; then
-	sudo apt install tar gunzip
-fi
-
 if [[ !($? -eq 0) ]]; then
 	if [[ !(-e get-pip.py) ]]; then
 	wget https://bootstrap.pypa.io/get-pip.py
@@ -46,9 +36,18 @@ if [[ !($? -eq 0) ]]; then
 	$python get-pip.py
 fi
 
-wget https://github.com/DrWatt/NNFast/archive/refs/heads/main.zip
-tar -xvf main.zip
-rm -v main.zip
+tar --version > /dev/null 2>&1
+if [[ !($? -eq 0) ]]; then
+	sudo apt install tar gunzip
+fi
+wget --version > /dev/null 2>&1
+if [[ !($? -eq 0) ]]; then
+	sudo apt install tar gunzip
+fi
+
+wget https://github.com/DrWatt/NNFast/archive/refs/heads/main.tar.gz
+tar -xvf main.tar.gz
+rm -v main.tar.gz
 
 $python -m pip install -r NNFast-main/requirements
 wget https://github.com/google/qkeras/archive/refs/tags/v0.9.0.tar.gz
@@ -61,5 +60,5 @@ rm -rvf qkeras-0.9.0
 
 echo "python3  ${PWD}/NNFast-main/NNfast.py \"\$@\" " > fastNN
 chmod a+x fastNN
-
+cp ${PWD}/NNFast-main/lay.json .
 
