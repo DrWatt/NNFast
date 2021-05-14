@@ -1,0 +1,17 @@
+argparse
+requests
+joblib
+numpy
+pandas
+matplotlib
+tensorflow
+scipy>=1.4.1
+pyparsing
+pytest>=4.6.9
+matplotlib>=3.1.2
+networkx>=2.1
+keras-tuner>=1.0.1
+scikit-learn>=0.23.1
+tqdm>=4.48.0
+setuptools>=41.0.0
+pyasn1<0.5.0,>=0.4.6
