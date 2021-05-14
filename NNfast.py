@@ -555,7 +555,7 @@ if __name__ == '__main__':
     #xgparams = json.load(open(pars.xgparams)) if pars.xgparams[0][0] == '/' else json.load(open(os.path.dirname(os.path.realpath(__file__))+'/'+pars.xgparams))
 
     if pars.nogpu: os.environ["CUDA_VISIBLE_DEVICES"]="-1"  
-    #run(pars)
+    run(pars)
     print("Files saved in "+ fold)
     print("Executed in %s s" % (time.time() - time0))
     
