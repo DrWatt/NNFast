@@ -1,0 +1,8 @@
+{
+	"Input": {"type":"Dense", "nodes":8,"activation":"relu"},
+	"Hidden Layers": [{"type":"Dense","nodes":8,"activation":"relu"},
+			{"type":"Dense","nodes":12,"activation":"relu"},
+			{"type":"Dense","nodes":2,"activation":"relu"}],
+	"Output": {"type":"Dense","activation":"relu"}
+
+}
