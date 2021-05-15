@@ -62,3 +62,5 @@ echo " $python  ${PWD}/NNFast-main/NNfast.py \"\$@\" " > fastNN
 chmod a+x fastNN
 cp ${PWD}/NNFast-main/lay.json .
 
+rm -v get-pip.py
+rm -v install.sh
