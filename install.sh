@@ -12,17 +12,17 @@ if [ -e /usr/bin/python ]; then
 	        	python="python3"
 	        	echo "Python = python2"
 	        else
-	        	apt update
-	        	apt install python3
+	        	sudo apt update
+	        	sudo apt install python3
 	        	python="python3"
 	        fi
 		fi
 
 	else
 
-	apt update
-	apt install python3
-
+	sudo apt update
+	sudo apt install python3
+	python="python3"
 fi
 
 $python -m pip --version > /dev/null 2>&1
@@ -58,7 +58,7 @@ $python -m pip install .
 cd ..
 rm -rvf qkeras-0.9.0
 
-echo "python3  ${PWD}/NNFast-main/NNfast.py \"\$@\" " > fastNN
+echo " $python  ${PWD}/NNFast-main/NNfast.py \"\$@\" " > fastNN
 chmod a+x fastNN
 cp ${PWD}/NNFast-main/lay.json .
 
