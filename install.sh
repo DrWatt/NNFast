@@ -42,7 +42,7 @@ if [[ !($? -eq 0) ]]; then
 fi
 wget --version > /dev/null 2>&1
 if [[ !($? -eq 0) ]]; then
-	sudo apt install tar gunzip
+	sudo apt install wget
 fi
 
 wget https://github.com/DrWatt/NNFast/archive/refs/heads/main.tar.gz
@@ -64,3 +64,5 @@ cp ${PWD}/NNFast-main/lay.json .
 
 rm -v get-pip.py
 rm -v install.sh
+
+echo -e "\n Installation completed succesfully! \n \a"
